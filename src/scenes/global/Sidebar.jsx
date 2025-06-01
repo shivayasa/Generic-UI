@@ -91,6 +91,8 @@ const SidebarContent = ({ isCollapsed, setIsCollapsed, selected, setSelected, co
   return (
     <Box
       sx={{
+        overflowY: 'auto',
+        maxHeight: '100vh',
         ".pro-sidebar .pro-menu": {
           background: theme.palette.mode === 'dark' 
             ? '#1F2A40' 
@@ -192,7 +194,7 @@ const SidebarContent = ({ isCollapsed, setIsCollapsed, selected, setSelected, co
                   alt="profile-user"
                   width="100px"
                   height="100px"
-                  src={`../../assets/user.png`}
+                  src={`../../assets/Praveen.png`}
                   style={{ 
                     cursor: "pointer", 
                     borderRadius: "50%",
@@ -213,7 +215,7 @@ const SidebarContent = ({ isCollapsed, setIsCollapsed, selected, setSelected, co
                     color: themeStyles.sidebar.text,
                   }}
                 >
-                  Ed Roh
+                  Praveen 
                 </Typography>
                 <Typography 
                   variant="h5" 
@@ -239,110 +241,36 @@ const SidebarContent = ({ isCollapsed, setIsCollapsed, selected, setSelected, co
               selected={selected}
               setSelected={setSelected}
             />
-            <Typography
-              variant="h6"
-              sx={{ 
-                m: "15px 0 5px 20px",
-                fontSize: "0.8rem",
-                fontWeight: "bold",
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                color: themeStyles.sidebar.secondaryText,
-                display: isCollapsed ? "none" : "block"
-              }}
-            >
-              Forms
-            </Typography>
-            {Array.isArray(schemas) && schemas.map((schema) => (
+            <Item
+  title={
+    <span style={{
+      fontSize: "0.8rem",
+      fontWeight: "bold",
+      textTransform: "uppercase",
+      letterSpacing: "0.5px",
+      color: themeStyles.sidebar.secondaryText,
+    }}>
+      Forms
+    </span>
+  }
+  to="#"
+  selected={selected === "Forms"}
+  setSelected={() => {
+    setSelected("Forms");
+  }}
+  icon={null} // No icon for Forms
+/>
+            { Array.isArray(schemas) && schemas.map((schema) => (
               <Item
                 key={schema}
-                title={schema}
+                title={schema.replace(/([A-Z])/g, ' $1').replace(/^ /, '').replace(/^./, (s) => s.toUpperCase())}
                 to={`/schemas/${schema}`}
                 icon={<DatabaseIcon />} // Use appropriate icon
                 selected={selected === schema}
                 setSelected={setSelected}
               />
             ))}
-			<Typography
-              variant="h6"
-              sx={{ 
-                m: "15px 0 5px 20px",
-                fontSize: "0.8rem",
-                fontWeight: "bold",
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                color: themeStyles.sidebar.secondaryText,
-                display: isCollapsed ? "none" : "block"
-              }}
-            >
-              Pages
-            </Typography>
-            <Item
-              title="Profile Form"
-              to="/form"
-              icon={<PersonOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-            <Item
-              title="Calendar"
-              to="/calendar"
-              icon={<CalendarTodayOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-            <Item
-              title="FAQ Page"
-              to="/faq"
-              icon={<HelpOutlineOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-
-            <Typography
-              variant="h6"
-              sx={{ 
-                m: "15px 0 5px 20px",
-                fontSize: "0.8rem",
-                fontWeight: "bold",
-                textTransform: "uppercase",
-                letterSpacing: "0.5px",
-                color: themeStyles.sidebar.secondaryText,
-                display: isCollapsed ? "none" : "block"
-              }}
-            >
-              Charts
-            </Typography>
-            <Item
-              title="Bar Chart"
-              to="/bar"
-              icon={<BarChartOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-            <Item
-              title="Pie Chart"
-              to="/pie"
-              icon={<PieChartOutlineOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-            <Item
-              title="Line Chart"
-              to="/line"
-              icon={<TimelineOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-            <Item
-              title="Geography Chart"
-              to="/geography"
-              icon={<MapOutlinedIcon />}
-              selected={selected}
-              setSelected={setSelected}
-            />
-			
-          </Box>
+			</Box>
 
           
         </Menu>

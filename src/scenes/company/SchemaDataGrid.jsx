@@ -21,10 +21,8 @@ import {
 } from "@mui/material";
 import { useTheme } from "@mui/material";
 import { tokens } from "../../theme";
-
 import BaseApiService from "../../services/baseApiService";
-
-const schemaService = new BaseApiService("");
+import { Grid } from "@mui/material";
 
 const SchemaDataGrid = () => {
   const { schemaName } = useParams();
@@ -37,18 +35,22 @@ const SchemaDataGrid = () => {
   const [selectionModel, setSelectionModel] = useState([]);
   const [error, setError] = useState("");
   const [snackbar, setSnackbar] = useState({ open: false, message: "", severity: "success" });
-  const [openDialog, setOpenDialog] = useState(false);
+  const [addMode, setAddMode] = useState(false);
   const [newRecord, setNewRecord] = useState({});
 
   useEffect(() => {
+    setAddMode(false); 
+    setNewRecord({});
     if (!schemaName) return;
 
     const fetchSchemaData = async () => {
       setLoading(true);
       setError("");
       try {
-        const res = await schemaService.http.request({ url: `/api/${schemaName}`, method: "GET" });
+        const api = new BaseApiService(`api/${schemaName}`);
+        const res = await api.getAll();
         const data = res.data;
+
         if (Array.isArray(data) && data.length > 0) {
           const allKeys = new Set();
           data.forEach((item) => Object.keys(item).forEach((key) => allKeys.add(key)));
@@ -66,7 +68,7 @@ const SchemaDataGrid = () => {
           setRows([]);
         }
       } catch (err) {
-        setError(err.message);
+        setError(err.message || "Failed to fetch data.");
       } finally {
         setLoading(false);
       }
@@ -75,28 +77,44 @@ const SchemaDataGrid = () => {
     fetchSchemaData();
   }, [schemaName]);
 
+  const handleAddNew = async () => {
+    try {
+      const api = new BaseApiService(`api/${schemaName}`);
+      const result = await api.create(newRecord);
+
+      if (!result.success) throw new Error(result.error.message);
+
+      const created = result.data;
+      setRows((prev) => [...prev, created]);
+      setSnackbar({ open: true, message: "Added successfully", severity: "success" });
+      setAddMode(false);
+      setNewRecord({});
+    } catch (err) {
+      setSnackbar({ open: true, message: `Add failed: ${err.message}`, severity: "error" });
+    }
+  };
+
   const handleEditCommit = async ({ id, field, value }) => {
     try {
-      const res = await fetch(`/api/${schemaName}/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [field]: value }),
-      });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const api = new BaseApiService(`api/${schemaName}`);
+      const result = await api.update(id, { [field]: value });
+
+      if (!result.success) throw new Error(result.error.message);
+
       setSnackbar({ open: true, message: "Updated successfully", severity: "success" });
-      setRows((prev) => prev.map((row) => (row._id === id ? { ...row, [field]: value } : row)));
+      setRows((prev) =>
+        prev.map((row) => (row._id === id ? { ...row, [field]: value } : row))
+      );
     } catch (err) {
-      setSnackbar({ open: true, message: `Failed: ${err.message}`, severity: "error" });
+      setSnackbar({ open: true, message: `Update failed: ${err.message}`, severity: "error" });
     }
   };
 
   const handleDelete = async () => {
     try {
-      await Promise.all(
-        selectionModel.map((id) =>
-          fetch(`/api/${schemaName}/${id}`, { method: "DELETE" })
-        )
-      );
+      const api = new BaseApiService(`api/${schemaName}`);
+      await Promise.all(selectionModel.map((id) => api.delete(id)));
+
       setRows((prev) => prev.filter((row) => !selectionModel.includes(row._id)));
       setSnackbar({ open: true, message: "Deleted successfully", severity: "success" });
       setSelectionModel([]);
@@ -105,28 +123,10 @@ const SchemaDataGrid = () => {
     }
   };
 
-  const handleAddNew = async () => {
-    try {
-      const res = await fetch(`/api/${schemaName}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newRecord),
-      });
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-      const created = await res.json();
-      setRows((prev) => [...prev, created]);
-      setSnackbar({ open: true, message: "Added successfully", severity: "success" });
-      setOpenDialog(false);
-      setNewRecord({});
-    } catch (err) {
-      setSnackbar({ open: true, message: `Add failed: ${err.message}`, severity: "error" });
-    }
-  };
-
   const CustomToolbar = () => (
     <GridToolbarContainer>
       <Button
-        onClick={() => setOpenDialog(true)}
+        onClick={() => setAddMode(true)}
         sx={{ color: `${colors.grey[100]} !important` }}
       >
         Add New
@@ -153,49 +153,86 @@ const SchemaDataGrid = () => {
   }
 
   return (
+  <Box m="20px">
+    <Typography variant="h4" gutterBottom>
+      {schemaName.replace(/([A-Z])/g, ' $1').replace(/^ /, '').replace(/^./, (s) => s.toUpperCase())}
+    </Typography>
+
+    {error && <Alert severity="error">{error}</Alert>}
+
     <Box
-      m="20px"
+      m="40px 0 0 0"
+      height="75vh"
+      sx={{
+        "& .MuiDataGrid-root": { border: "none" },
+        "& .MuiDataGrid-cell": { borderBottom: "none" },
+        "& .name-column--cell": { color: colors.greenAccent[300] },
+        "& .MuiDataGrid-columnHeaders": {
+          backgroundColor: colors.blueAccent[700],
+          borderBottom: "none",
+        },
+        "& .MuiDataGrid-virtualScroller": {
+          backgroundColor: colors.primary[400],
+        },
+        "& .MuiDataGrid-footerContainer": {
+          borderTop: "none",
+          backgroundColor: colors.blueAccent[700],
+        },
+        "& .MuiCheckbox-root": {
+          color: `${colors.greenAccent[200]} !important`,
+        },
+        "& .MuiDataGrid-toolbarContainer .MuiButton-text": {
+          color: `${colors.grey[100]} !important`,
+        },
+      }}
     >
-      <Typography variant="h4" gutterBottom>
-          {schemaName.toUpperCase()} Data
-      </Typography>
-
-
-      {error && <Alert severity="error">{error}</Alert>}
-
-      <Box
-        m="40px 0 0 0"
-        height="75vh"
-        sx={{
-          "& .MuiDataGrid-root": {
-            border: "none",
-          },
-          "& .MuiDataGrid-cell": {
-            borderBottom: "none",
-          },
-          "& .name-column--cell": {
-            color: colors.greenAccent[300],
-          },
-          "& .MuiDataGrid-columnHeaders": {
-            backgroundColor: colors.blueAccent[700],
-            borderBottom: "none",
-          },
-          "& .MuiDataGrid-virtualScroller": {
-            backgroundColor: colors.primary[400],
-          },
-          "& .MuiDataGrid-footerContainer": {
-            borderTop: "none",
-            backgroundColor: colors.blueAccent[700],
-          },
-          "& .MuiCheckbox-root": {
-            color: `${colors.greenAccent[200]} !important`,
-          },
-          "& .MuiDataGrid-toolbarContainer .MuiButton-text": {
-            color: `${colors.grey[100]} !important`,
-          },
-        }}
-      >
-        {rows.length === 0 ? (
+      {addMode ? (
+        // --- Add New Form ---
+        <Box mb={3} p={2} sx={{ background: colors.primary[400], borderRadius: 2 }}>
+          <Typography variant="h5" gutterBottom>
+            Add New {schemaName.replace(/([A-Z])/g, ' $1').replace(/^ /, '').replace(/^./, (s) => s.toUpperCase())}
+          </Typography>
+         <Box component="form" sx={{ flexGrow: 1 }}>
+  <Grid container spacing={2}>
+    {columns
+      .filter((col) => col.field !== "_id" && col.field !== "__v")
+      .map((col) => (
+        <Grid item xs={12} sm={6} md={6} key={col.field}>
+          <TextField
+            margin="dense"
+            label={col.headerName}
+            fullWidth
+            value={newRecord[col.field] || ""}
+            onChange={(e) =>
+              setNewRecord({ ...newRecord, [col.field]: e.target.value })
+            }
+          />
+        </Grid>
+      ))}
+  </Grid>
+  <Box display="flex" gap={2} mt={2}>
+    <Button
+      variant="outlined"
+      color="secondary"
+      onClick={() => {
+        setAddMode(false);
+        setNewRecord({});
+      }}
+    >
+      Back
+    </Button>
+    <Button
+      variant="contained"
+      onClick={handleAddNew}
+    >
+      Save
+    </Button>
+  </Box>
+</Box>
+        </Box>
+      ) : (
+        // --- DataGrid ---
+        rows.length === 0 ? (
           <Typography variant="h6" color="textSecondary" align="center" mt={4}>
             No data available
           </Typography>
@@ -212,49 +249,27 @@ const SchemaDataGrid = () => {
             onCellEditCommit={handleEditCommit}
             components={{ Toolbar: CustomToolbar }}
           />
-        )}
-      </Box>
-
-      <Snackbar
-        open={snackbar.open}
-        autoHideDuration={4000}
-        onClose={() => setSnackbar({ ...snackbar, open: false })}
-        message={snackbar.message}
-        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        ContentProps={{
-          sx: {
-            backgroundColor: snackbar.severity === "success" ? colors.greenAccent[600] : colors.redAccent?.[600] || "red",
-          },
-        }}
-      />
-
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)}>
-        <DialogTitle>Add New {schemaName} Entry</DialogTitle>
-        <DialogContent>
-          {columns
-            .filter((col) => col.field !== "_id" && col.field !== "__v")
-            .map((col) => (
-              <TextField
-                key={col.field}
-                margin="dense"
-                label={col.headerName}
-                fullWidth
-                value={newRecord[col.field] || ""}
-                onChange={(e) =>
-                  setNewRecord({ ...newRecord, [col.field]: e.target.value })
-                }
-              />
-            ))}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenDialog(false)}>Cancel</Button>
-          <Button onClick={handleAddNew} variant="contained">
-            Save
-          </Button>
-        </DialogActions>
-      </Dialog>
+        )
+      )}
     </Box>
-  );
+
+    <Snackbar
+      open={snackbar.open}
+      autoHideDuration={4000}
+      onClose={() => setSnackbar({ ...snackbar, open: false })}
+      message={snackbar.message}
+      anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      ContentProps={{
+        sx: {
+          backgroundColor:
+            snackbar.severity === "success"
+              ? colors.greenAccent[600]
+              : colors.redAccent?.[600] || "red",
+        },
+      }}
+    />
+  </Box>
+);
 };
 
 export default SchemaDataGrid;

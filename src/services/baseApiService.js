@@ -2,14 +2,20 @@ import axios from 'axios';
 
 class HttpClient {
   constructor(config = {}) {
+     // Define base URL that shouldn't be overridden
+    const BASE_URL = 'https://generic-backend-eegp.onrender.com';
+    
+    // Prevent baseURL from being overridden
+    const { baseURL, ...restConfig } = config;
+    
     this.client = axios.create({
-      baseURL: process.env.REACT_APP_API_URL || 'https://generic-backend-eegp.onrender.com',
+      baseURL: BASE_URL,
       timeout: config.timeout || 60000,
       headers: {
         'Content-Type': 'application/json',
         ...config.headers,
       },
-      ...config
+      ...restConfig
     });
 
     this._initializeInterceptors();
@@ -42,12 +48,26 @@ class HttpClient {
 
   async request(config) {
     try {
+      console.log("=== Axios Request Start ===");
+    console.log("Method:", config.method);
+    console.log("Relative URL:", config.url);
+    console.log("Base URL (default):", this.client.defaults.baseURL);
+    console.log("Final full URL (estimate):", this.client.defaults.baseURL + config.url);
+    console.log("Headers:", config.headers);
+    console.log("Data:", config.data);
+    console.log("============================");
+
       const response = await this.client.request(config);
       return {
         success: true,
         data: response,
       };
     } catch (error) {
+      console.error("=== Axios Request Error ===");
+    console.error("URL:", error.config?.url);
+    console.error("Base URL (at error time):", this.client.defaults.baseURL);
+    console.error("Full error object:", error);
+    console.error("===========================");
       return {
         success: false,
         error: {

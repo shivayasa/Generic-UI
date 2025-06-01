@@ -63,7 +63,7 @@ const DynamicForm = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const api = new BaseApiService(`/api/${selectedForm}`);
+    const api = new BaseApiService(`api/${selectedForm}`);
     const hasFile = Object.entries(schema.fields).some(([_, cfg]) => cfg.upload);
 
     const result = recordId
