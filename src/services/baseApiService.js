@@ -4,6 +4,7 @@ class HttpClient {
   constructor(config = {}) {
      // Define base URL that shouldn't be overridden
     const BASE_URL = 'https://generic-backend-eegp.onrender.com';
+   // const BASE_URL = 'http://localhost:3000'; // Change this to your actual base URL
     
     // Prevent baseURL from being overridden
     const { baseURL, ...restConfig } = config;

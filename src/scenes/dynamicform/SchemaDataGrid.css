@@ -1,0 +1,42 @@
+.schema-data-grid-container {
+  margin: 20px;
+}
+
+.schema-data-grid-header {
+  margin-bottom: 16px;
+}
+
+.schema-data-grid-search {
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.schema-data-grid-box {
+  margin: 40px 0 0 0;
+  height: 75vh;
+}
+
+/* Add/Edit form styles */
+.schema-data-grid-add-form {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--mui-palette-background-paper, #222b3c);
+  border-radius: 8px;
+}
+
+.schema-data-grid-add-form-title {
+  margin-bottom: 16px;
+}
+
+.schema-data-grid-form-actions {
+  display: flex;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+/* Bold the first visible column */
+.first-visible-column--cell {
+  font-weight: bold !important;
+}
