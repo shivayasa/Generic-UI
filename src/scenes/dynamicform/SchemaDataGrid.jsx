@@ -15,6 +15,8 @@ import {
   Button,
   TextField,
   Grid,
+  MenuItem,
+  InputLabel,
 } from "@mui/material";
 import { useTheme } from "@mui/material";
 import { tokens } from "../../theme";
@@ -27,6 +29,7 @@ const SchemaDataGrid = () => {
 
   const [rows, setRows] = useState([]);
   const [columns, setColumns] = useState([]);
+  const [fieldConfigs, setFieldConfigs] = useState({});
   const [loading, setLoading] = useState(true);
   const [selectionModel, setSelectionModel] = useState([]);
   const [error, setError] = useState("");
@@ -36,13 +39,36 @@ const SchemaDataGrid = () => {
   const [searchText, setSearchText] = useState("");
   const [editRow, setEditRow] = useState(null);
   const [editRecord, setEditRecord] = useState({});
+  const [pageSize, setPageSize] = useState(10);
+  const [page, setPage] = useState(0);
 
+  // Fetch schema fields/configs for dynamic form rendering
   useEffect(() => {
+    const fetchSchemaFields = async () => {
+      try {
+        const api = new BaseApiService();
+        const res = await api.http.request({ url: `/schemas/${schemaName}`, method: "GET" });
+        let fields = res?.data?.fields || res?.fields;
+        if (fields) {
+          setFieldConfigs(fields);
+        } else {
+          setFieldConfigs({});
+        }
+      } catch (err) {
+        setFieldConfigs({});
+      }
+    };
+    if (schemaName) fetchSchemaFields();
+  }, [schemaName]);
+
+  // Only build columns after fieldConfigs are loaded
+  useEffect(() => {
+    if (!schemaName || !Object.keys(fieldConfigs).length) return;
+
     setAddMode(false);
     setNewRecord({});
     setEditRow(null);
     setEditRecord({});
-    if (!schemaName) return;
 
     const fetchSchemaData = async () => {
       setLoading(true);
@@ -53,14 +79,34 @@ const SchemaDataGrid = () => {
         const data = res.data;
 
         if (Array.isArray(data) && data.length > 0) {
-          const allKeys = new Set();
-          data.forEach((item) => Object.keys(item).forEach((key) => allKeys.add(key)));
-          const dynamicCols = Array.from(allKeys).map((key, idx) => ({
+          // Always use schema order for columns
+          const schemaKeys = Object.keys(fieldConfigs);
+          // Add any extra keys from data (not in schema) at the end
+          const dataKeys = new Set();
+          data.forEach((item) => Object.keys(item).forEach((key) => dataKeys.add(key)));
+          const extraKeys = Array.from(dataKeys).filter(
+            (k) => !schemaKeys.includes(k)
+          );
+          const allKeys = [...schemaKeys, ...extraKeys];
+
+          // Find the first visible field in schema (not _id, __v, createdAt, updatedAt)
+          const visibleSchemaKeys = schemaKeys.filter(
+            (k) => !["_id", "__v", "createdAt", "updatedAt"].includes(k)
+          );
+          const firstVisibleKey = visibleSchemaKeys[0];
+
+          const dynamicCols = allKeys.map((key, idx) => ({
             field: key,
             headerName: key.charAt(0).toUpperCase() + key.slice(1),
             width: 180,
-            editable: false, // Disable inline editing
-            cellClassName: idx === 0 ? "name-column--cell" : undefined,
+            editable: false,
+            cellClassName:
+              key === firstVisibleKey
+                ? "first-visible-column--cell"
+                : idx === 0
+                  ? "name-column--cell"
+                  : undefined,
+            ...(fieldConfigs[key] || {}),
           }));
           setColumns(dynamicCols);
           setRows(data);
@@ -76,12 +122,145 @@ const SchemaDataGrid = () => {
     };
 
     fetchSchemaData();
-  }, [schemaName]);
+  }, [schemaName, fieldConfigs]);
+
+  // Render a field based on config (for add/edit forms)
+  const renderField = (col, value, onChange, mode = "add") => {
+    // File upload
+    if (col.upload) {
+      return (
+        <div>
+          <InputLabel>{col.headerName}</InputLabel>
+          {/* Show preview if editing and value is a string (filename) */}
+          {mode === "edit" && value && typeof value === "string" && (
+            <Box mb={1}>
+              {/\.(jpg|jpeg|png|gif|bmp|webp)$/i.test(value) ? (
+                <img
+                  src={`http://localhost:3000/uploads/${schemaName}/${value}`}
+                  alt={col.field}
+                  style={{ maxWidth: 120, maxHeight: 120, display: "block", marginBottom: 8 }}
+                />
+              ) : (
+                <a
+                  href={`http://localhost:3000/uploads/${schemaName}/${value}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Download {col.field}
+                </a>
+              )}
+            </Box>
+          )}
+          <input
+            type="file"
+            name={col.field}
+            onChange={onChange}
+            required={col.required && mode === "add"}
+            className="dynamic-form-file-input"
+          />
+          {value && typeof value === "object" && (
+            <Typography variant="caption">{value.name}</Typography>
+          )}
+        </div>
+      );
+    }
+    // Enum dropdown
+    if (col.enum) {
+      return (
+        <TextField
+          select
+          label={col.headerName}
+          name={col.field}
+          value={value || ""}
+          onChange={onChange}
+          required={col.required}
+          fullWidth
+        >
+          {col.enum.map((option) => (
+            <MenuItem key={option} value={option}>
+              {option}
+            </MenuItem>
+          ))}
+        </TextField>
+      );
+    }
+    // Default text/number
+    return (
+      <TextField
+        margin="dense"
+        label={col.headerName}
+        fullWidth
+        name={col.field}
+        value={value || ""}
+        onChange={onChange}
+        required={col.required}
+        type={col.type === "number" ? "number" : "text"}
+      />
+    );
+  };
+
+  // Unified onChange handler for add form
+  const handleFieldChange = (e) => {
+    const { name, value, type, files } = e.target;
+    const update = type === "file" ? files[0] : value;
+    setNewRecord((prev) => ({ ...prev, [name]: update }));
+  };
 
   const handleAddNew = async () => {
     try {
+      // Build payload from newRecord, only including fields that are in the schema and not system fields
+      const filteredRecord = {};
+      columns.forEach((col) => {
+        if (
+          col.field !== "_id" &&
+          col.field !== "__v" &&
+          col.field !== "createdAt" &&
+          col.field !== "updatedAt"
+        ) {
+          filteredRecord[col.field] = newRecord[col.field] ?? "";
+        }
+      });
+
+      // Check for file fields
+      const hasFile = columns.some(
+        (col) => (col.upload || col.isUpload) && newRecord[col.field] instanceof File
+      );
+
+      let payload = filteredRecord;
+      let isFormData = false;
+
+      if (hasFile) {
+        payload = new FormData();
+        columns.forEach((col) => {
+          if (
+            col.field !== "_id" &&
+            col.field !== "__v" &&
+            col.field !== "createdAt" &&
+            col.field !== "updatedAt"
+          ) {
+            const value = newRecord[col.field];
+            if (value !== null && value !== undefined && value !== "") {
+              payload.append(col.field, value);
+            }
+          }
+        });
+        isFormData = true;
+      }
+
+      if (hasFile && payload instanceof FormData) {
+        for (let pair of payload.entries()) {
+          console.log("FormData entry:", pair[0], pair[1]);
+        }
+      } else {
+        console.log("Request body being sent:", payload);
+      }
       const api = new BaseApiService(`api/${schemaName}`);
-      const result = await api.create(newRecord);
+      let result;
+      if (hasFile) {
+        result = await api.create(payload, hasFile);
+      } else {
+        result = await api.create(payload);
+      }
 
       if (!result.success) throw new Error(result.error.message);
 
@@ -92,11 +271,9 @@ const SchemaDataGrid = () => {
       setNewRecord({});
     } catch (err) {
       setSnackbar({ open: true, message: `Add failed: ${err.message}`, severity: "error" });
+      console.log("Add failed:", err, err.response?.data);
     }
   };
-
-  // Remove inline editing handler
-  // const handleEditCommit = async ({ id, field, value }) => { ... }
 
   const handleDelete = async () => {
     try {
@@ -108,10 +285,11 @@ const SchemaDataGrid = () => {
       setSelectionModel([]);
     } catch (err) {
       setSnackbar({ open: true, message: `Delete failed: ${err.message}`, severity: "error" });
+      console.log("Delete failed:", err);
     }
   };
 
-   // Find the first visible column (not _id, __v, createdAt, updatedAt)
+  // Find the first visible column (not _id, __v, createdAt, updatedAt)
   const getFirstVisibleColumn = useCallback(() => {
     return columns.find(
       (col) =>
@@ -137,8 +315,45 @@ const SchemaDataGrid = () => {
   // Handle update from edit form
   const handleUpdate = async () => {
     try {
+      // Build payload from editRecord, only including fields that are in the schema and not system fields
+      const filteredRecord = {};
+      columns.forEach((col) => {
+        if (
+          col.field !== "_id" &&
+          col.field !== "__v" &&
+          col.field !== "createdAt" &&
+          col.field !== "updatedAt"
+        ) {
+          filteredRecord[col.field] = editRecord[col.field] ?? "";
+        }
+      });
+
+      // Check for file fields (must be File object)
+      const hasFile = columns.some(
+        (col) => (col.upload || col.isUpload) && editRecord[col.field] instanceof File
+      );
+
+      let payload = filteredRecord;
+      let isFormData = false;
+      if (hasFile) {
+        payload = new FormData();
+        columns.forEach((col) => {
+          if (
+            col.field !== "_id" &&
+            col.field !== "__v" &&
+            col.field !== "createdAt" &&
+            col.field !== "updatedAt"
+          ) {
+            const value = editRecord[col.field];
+            if (value !== null && value !== undefined && value !== "") {
+              payload.append(col.field, value);
+            }
+          }
+        });
+        isFormData = true;
+      }
       const api = new BaseApiService(`api/${schemaName}`);
-      const result = await api.update(editRow._id, editRecord);
+      const result = await api.update(editRow._id, payload, isFormData);
       if (!result.success) throw new Error(result.error.message);
 
       setSnackbar({ open: true, message: "Updated successfully", severity: "success" });
@@ -149,6 +364,7 @@ const SchemaDataGrid = () => {
       setEditRecord({});
     } catch (err) {
       setSnackbar({ open: true, message: `Update failed: ${err.message}`, severity: "error" });
+      console.log("Update failed:", err);
     }
   };
 
@@ -242,6 +458,7 @@ const SchemaDataGrid = () => {
           "& .MuiDataGrid-root": { border: "none" },
           "& .MuiDataGrid-cell": { borderBottom: "none" },
           "& .name-column--cell": { color: colors.greenAccent[300] },
+          "& .first-visible-column--cell": { fontWeight: "bold" },
           "& .MuiDataGrid-columnHeaders": {
             backgroundColor: colors.blueAccent[700],
             borderBottom: "none",
@@ -283,15 +500,12 @@ const SchemaDataGrid = () => {
                   )
                   .map((col) => (
                     <Grid item xs={12} sm={6} md={6} key={col.field}>
-                      <TextField
-                        margin="dense"
-                        label={col.headerName}
-                        fullWidth
-                        value={newRecord[col.field] || ""}
-                        onChange={(e) =>
-                          setNewRecord({ ...newRecord, [col.field]: e.target.value })
-                        }
-                      />
+                      {renderField(
+                        col,
+                        newRecord[col.field],
+                        handleFieldChange,
+                        "add"
+                      )}
                     </Grid>
                   ))}
               </Grid>
@@ -334,15 +548,16 @@ const SchemaDataGrid = () => {
                   )
                   .map((col) => (
                     <Grid item xs={12} sm={6} md={6} key={col.field}>
-                      <TextField
-                        margin="dense"
-                        label={col.headerName}
-                        fullWidth
-                        value={editRecord[col.field] || ""}
-                        onChange={(e) =>
-                          setEditRecord({ ...editRecord, [col.field]: e.target.value })
-                        }
-                      />
+                      {renderField(
+                        col,
+                        editRecord[col.field],
+                        (e) => {
+                          const { name, value, type, files } = e.target;
+                          const update = type === "file" ? files[0] : value;
+                          setEditRecord((prev) => ({ ...prev, [name]: update }));
+                        },
+                        "edit"
+                      )}
                     </Grid>
                   ))}
               </Grid>
@@ -379,11 +594,14 @@ const SchemaDataGrid = () => {
             )}
             getRowId={(row) => row._id || row.id}
             checkboxSelection
-            pageSize={10}
+            pageSize={pageSize}
+            onPageSizeChange={(newPageSize) => setPageSize(newPageSize)}
             rowsPerPageOptions={[5, 10, 25]}
+            pagination
+            page={page}
+            onPageChange={(newPage) => setPage(newPage)}
             disableSelectionOnClick
             onSelectionModelChange={(newSelection) => setSelectionModel(newSelection)}
-            // onCellEditCommit={handleEditCommit} // <-- removed inline editing
             components={{ Toolbar: CustomToolbar }}
             onCellClick={handleCellClick}
           />

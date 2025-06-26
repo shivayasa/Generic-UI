@@ -2,18 +2,16 @@ import axios from 'axios';
 
 class HttpClient {
   constructor(config = {}) {
-     // Define base URL that shouldn't be overridden
-    const BASE_URL = 'https://generic-backend-eegp.onrender.com';
-   // const BASE_URL = 'http://localhost:3000'; // Change this to your actual base URL
-    
+    //const BASE_URL = 'https://generic-backend-eegp.onrender.com';
+    const BASE_URL = 'http://localhost:3000'; // Change this to your actual base URL
+
     // Prevent baseURL from being overridden
     const { baseURL, ...restConfig } = config;
-    
+
     this.client = axios.create({
       baseURL: BASE_URL,
       timeout: config.timeout || 60000,
       headers: {
-        'Content-Type': 'application/json',
         ...config.headers,
       },
       ...restConfig
@@ -37,8 +35,9 @@ class HttpClient {
     this.client.interceptors.response.use(
       (response) => response.data,
       (error) => {
+        // Pass backend error message directly if available, else fallback to generic error
         const customError = {
-          message: error.response?.data?.message || 'Something went wrong',
+          message: error.response?.data?.message || error.response?.data || error.message,
           status: error.response?.status,
           code: error.response?.data?.code,
         };
@@ -50,14 +49,7 @@ class HttpClient {
   async request(config) {
     try {
       console.log("=== Axios Request Start ===");
-    console.log("Method:", config.method);
-    console.log("Relative URL:", config.url);
-    console.log("Base URL (default):", this.client.defaults.baseURL);
-    console.log("Final full URL (estimate):", this.client.defaults.baseURL + config.url);
-    console.log("Headers:", config.headers);
-    console.log("Data:", config.data);
-    console.log("============================");
-
+      console.log("config:", config);   
       const response = await this.client.request(config);
       return {
         success: true,
@@ -65,10 +57,10 @@ class HttpClient {
       };
     } catch (error) {
       console.error("=== Axios Request Error ===");
-    console.error("URL:", error.config?.url);
-    console.error("Base URL (at error time):", this.client.defaults.baseURL);
-    console.error("Full error object:", error);
-    console.error("===========================");
+      console.error("URL:", error.config?.url);
+      console.error("Base URL (at error time):", this.client.defaults.baseURL);
+      console.error("Full error object:", error);
+      console.error("===========================");
       return {
         success: false,
         error: {
@@ -100,9 +92,20 @@ class BaseApiService {
   }
 
   async create(data, isFormData = false) {
-    const payload = isFormData ? this._convertToFormData(data) : data;
-    const headers = isFormData ? { 'Content-Type': 'multipart/form-data' } : {};
+    let payload = data;
+    if (isFormData && !(data instanceof FormData)) {
+      payload = this._convertToFormData(data);
+    }
 
+    if (payload instanceof FormData) {
+      for (let pair of payload.entries()) {
+        console.log("FormData entry:", pair[0], pair[1]);
+      }
+    } else {
+      console.log("JSON payload:", payload);
+    }
+
+    const headers = isFormData ? {} : {};
     return this.http.request({
       method: 'POST',
       url: this.endpoint,
@@ -113,7 +116,8 @@ class BaseApiService {
 
   async update(id, data, isFormData = false) {
     const payload = isFormData ? this._convertToFormData(data) : data;
-    const headers = isFormData ? { 'Content-Type': 'multipart/form-data' } : {};
+    // Do NOT set Content-Type for FormData, let browser/axios handle it
+    const headers = isFormData ? {} : {};
 
     return this.http.request({
       method: 'PUT',

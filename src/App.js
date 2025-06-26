@@ -15,7 +15,6 @@ import Line from "./scenes/line";
 import FAQ from "./scenes/faq";
 import Geography from "./scenes/geography";
 import Calendar from "./scenes/calendar/calendar";
-import DynamicForm from "./scenes/dynamicform/DynamicForm";
 import SchemaDataGrid from "./scenes/dynamicform/SchemaDataGrid";
 // ...other imports...
 
