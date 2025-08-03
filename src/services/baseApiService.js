@@ -1,4 +1,6 @@
 import axios from 'axios';
+import {jwtDecode} from 'jwt-decode';
+
 
 class HttpClient {
   constructor(config = {}) {
@@ -10,6 +12,7 @@ class HttpClient {
 
     this.client = axios.create({
       baseURL: BASE_URL,
+      withCredentials: true,
       timeout: config.timeout || 60000,
       headers: {
         ...config.headers,
@@ -20,31 +23,54 @@ class HttpClient {
     this._initializeInterceptors();
   }
 
-  _initializeInterceptors() {
-    this.client.interceptors.request.use(
-      (config) => {
-        const token = localStorage.getItem('token');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
-        }
-        return config;
-      },
-      (error) => Promise.reject(error)
-    );
 
-    this.client.interceptors.response.use(
-      (response) => response.data,
-      (error) => {
-        // Pass backend error message directly if available, else fallback to generic error
-        const customError = {
-          message: error.response?.data?.message || error.response?.data || error.message,
-          status: error.response?.status,
-          code: error.response?.data?.code,
-        };
-        return Promise.reject(customError);
+
+_initializeInterceptors() {
+  this.client.interceptors.request.use(
+    (config) => {
+      const token = localStorage.getItem("token");
+
+      if (token) {
+        try {
+          const decoded = jwtDecode(token);
+          const isExpired = decoded.exp * 1000 < Date.now();
+          console.log("Token isExpired:", isExpired);
+          if (isExpired) {
+            localStorage.removeItem("token");
+            localStorage.setItem("logout", Date.now().toString()); // cross-tab logout
+            window.location.href = "/login"; // optional: redirect now
+            return Promise.reject(new Error("Token expired"));
+          }
+          config.headers.Authorization = `Bearer ${token}`;
+        } catch (err) {
+          console.error("Invalid token:", err);
+        }
       }
-    );
-  }
+      return config;
+    },
+    (error) => Promise.reject(error)
+  );
+
+  this.client.interceptors.response.use(
+    (response) => response.data,
+    (error) => {
+      const customError = {
+        message: error.response?.data?.message || error.response?.data || error.message,
+        status: error.response?.status,
+        code: error.response?.data?.code,
+      };
+
+      // Optionally log out on 401 Unauthorized
+      if (customError.status === 401) {
+        localStorage.removeItem("token");
+        localStorage.setItem("logout", Date.now().toString());
+        window.location.href = "/login";
+      }
+      return Promise.reject(customError);
+    }
+  );
+}
+
 
   async request(config) {
     try {
@@ -79,17 +105,41 @@ class BaseApiService {
     this.http = new HttpClient(config);
   }
 
-  _convertToFormData(data) {
-    const formData = new FormData();
-    Object.keys(data).forEach(key => {
-      if (data[key] instanceof File) {
-        formData.append(key, data[key]);
-      } else if (data[key] !== null && data[key] !== undefined) {
-        formData.append(key, data[key]);
+ _convertToFormData(data) {
+  if (data instanceof FormData) {
+    console.log('Data is already FormData:');
+    for (let [key, value] of data.entries()) {
+      if (value instanceof File) {
+        console.log(`FormData entry: "${key}" = [File: ${value.name}, type: ${value.type}]`);
+      } else {
+        console.log(`FormData entry: "${key}" = "${value}"`);
       }
-    });
-    return formData;
+    }
+    return data;
   }
+
+  const formData = new FormData();
+  console.log('Converting plain object to FormData:', data);
+
+  Object.keys(data).forEach(key => {
+    const value = data[key];
+    console.log(`Processing key: "${key}", value:`, value);
+
+    if (value instanceof File) {
+      console.log(`Appending File: "${key}"`);
+      formData.append(key, value);
+    } else if (value !== null && value !== undefined) {
+      console.log(`Appending value: "${key}" = "${value}"`);
+      formData.append(key, value);
+    } else {
+      console.log(`Skipping key: "${key}" (null or undefined)`);
+    }
+  });
+
+  return formData;
+}
+
+
 
   async create(data, isFormData = false) {
     let payload = data;
@@ -115,7 +165,7 @@ class BaseApiService {
   }
 
   async update(id, data, isFormData = false) {
-    const payload = isFormData ? this._convertToFormData(data) : data;
+    const payload =  this._convertToFormData(data);
     // Do NOT set Content-Type for FormData, let browser/axios handle it
     const headers = isFormData ? {} : {};
 
@@ -164,6 +214,44 @@ class BaseApiService {
       data: { status }
     });
   }
+
+  // ...existing code...
+async downloadFile(fileId, filename = "downloaded-file") {
+  try {
+    const response = await this.http.request({
+      method: 'GET',
+      url: `${this.endpoint}/api/download/${fileId}`,
+      responseType: 'blob',
+    });
+
+    // response.data is already a Blob
+    const url = window.URL.createObjectURL(response.data);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+
+    return { success: true };
+  } catch (error) {
+    console.error("File download error:", error);
+    return {
+      success: false,
+      error: {
+        message: error.message,
+        status: error.status,
+        code: error.code,
+      },
+    };
+  }
 }
+
+}
+
+
+
 
 export default BaseApiService;

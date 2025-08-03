@@ -21,15 +21,22 @@ import {
 import { useTheme } from "@mui/material";
 import { tokens } from "../../theme";
 import BaseApiService from "../../services/baseApiService";
+import { useAuth } from '../../context/AuthContext';
+
+
 
 // Utility to extract filename from URL
 const extractFilename = (url) => url?.split("/").pop() || "";
 
 const SchemaDataGrid = () => {
+  
   const { schemaName } = useParams();
   const theme = useTheme();
   const colors = tokens(theme.palette.mode);
-
+  const { roles } = useAuth();
+  const isAdmin = roles.includes("admin");
+  const isEditor = roles.includes("editor");
+  const isUser = roles.includes("user");
   const [rows, setRows] = useState([]);
   const [columns, setColumns] = useState([]);
   const [fieldConfigs, setFieldConfigs] = useState({});
@@ -108,11 +115,68 @@ const SchemaDataGrid = () => {
             ...(fieldConfigs[key] || {}),
           }));
 
-          setColumns(dynamicCols);
+          // Add download column for file fields
+          const downloadCols = dynamicCols.map((col) => {
+            if (col.upload) {
+              return {
+                ...col,
+                renderCell: (params) => {
+                  const fileId = params.value;
+                  const displayName = extractFilename(fileId);
+                  return fileId ? (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      onClick={() =>
+                        handleDownload(fileId, displayName || "downloaded-file")
+                      }
+                    >
+                      Download
+                    </Button>
+                  ) : null;
+                },
+              };
+            }
+            return col;
+          });
+
+          setColumns(downloadCols);
           setRows(data);
         } else {
-          setColumns([]);
-          setRows([]);
+          // Build columns from fieldConfigs even if no data
+          const schemaKeys = Object.keys(fieldConfigs);
+          const visible = schemaKeys.filter(
+            (k) => !["_id", "__v", "createdAt", "updatedAt"].includes(k)
+          );
+          const firstVisible = visible[0];
+
+          const dynamicCols = schemaKeys.map((key, idx) => ({
+            field: key,
+            headerName: key.charAt(0).toUpperCase() + key.slice(1),
+            width: 180,
+            editable: false,
+            cellClassName:
+              key === firstVisible
+                ? "first-visible-column--cell"
+                : idx === 0
+                ? "name-column--cell"
+                : undefined,
+            ...(fieldConfigs[key] || {}),
+          }));
+
+          // Add download column for file fields
+          const downloadCols = dynamicCols.map((col) => {
+            if (col.upload) {
+              return {
+                ...col,
+                renderCell: () => null, // No file to download if no data
+              };
+            }
+            return col;
+          });
+
+          setColumns(downloadCols);
+          setRows([]); // No data
         }
       } catch (err) {
         setError(err.message || "Failed to fetch data.");
@@ -123,6 +187,19 @@ const SchemaDataGrid = () => {
 
     fetchSchemaData();
   }, [schemaName, fieldConfigs]);
+
+  // Download handler using BaseApiService
+  const handleDownload = async (fileId, filename) => {
+    const api = new BaseApiService(``);
+    const result = await api.downloadFile(fileId, filename);
+    if (!result.success) {
+      setSnackbar({
+        open: true,
+        message: `Download failed: ${result.error.message}`,
+        severity: "error",
+      });
+    }
+  };
 
   const renderField = (col, value, onChange, mode = "add") => {
     if (col.upload) {
@@ -150,13 +227,15 @@ const SchemaDataGrid = () => {
                   }}
                 />
               ) : (
-                <a
-                  href={`http://localhost:3000/uploads/${schemaName}/${value}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={() =>
+                    handleDownload(value, displayName || "downloaded-file")
+                  }
                 >
                   Download {displayName}
-                </a>
+                </Button>
               )}
             </Box>
           )}
@@ -236,6 +315,7 @@ const SchemaDataGrid = () => {
       );
 
       let payload = filtered;
+      let isFormData = false;
       if (hasFile) {
         payload = new FormData();
         columns.forEach((col) => {
@@ -246,10 +326,21 @@ const SchemaDataGrid = () => {
             }
           }
         });
+        isFormData = true;
       }
-
+      if (isFormData && payload instanceof FormData) {
+  for (let pair of payload.entries()) {
+    if (pair[1] instanceof File) {
+      console.log(`FormData entry: ${pair[0]} = [File: ${pair[1].name}, type: ${pair[1].type}]`);
+    } else {
+      console.log(`FormData entry: ${pair[0]} = ${pair[1]}`);
+    }
+  }
+} else {
+  console.log("JSON payload:", payload);
+}
       const api = new BaseApiService(`api/${schemaName}`);
-      const result = await api.create(payload, hasFile);
+      const result = await api.create(payload, isFormData);
       if (!result.success) throw new Error(result.error.message);
 
       setRows((p) => [...p, result.data]);
@@ -306,7 +397,8 @@ const SchemaDataGrid = () => {
           editRecord[col.field] instanceof File
       );
 
-      let payload = filtered;
+      let payload = filtered;      
+      let isFormData = false;
       if (hasFile) {
         payload = new FormData();
         columns.forEach((col) => {
@@ -317,14 +409,25 @@ const SchemaDataGrid = () => {
             }
           }
         });
+        isFormData = true;
       }
-
+      if (isFormData && payload instanceof FormData) {
+  for (let pair of payload.entries()) {
+    if (pair[1] instanceof File) {
+      console.log(`FormData entry1: ${pair[0]} = [File: ${pair[1].name}, type: ${pair[1].type}]`);
+    } else {
+      console.log(`FormData entry: ${pair[0]} = ${pair[1]}`);
+    }
+  }
+  } else {
+    console.log("JSON payload:", payload);
+  }
       const api = new BaseApiService(`api/${schemaName}`);
-      const result = await api.update(editRow._id, payload, hasFile);
+      const result = await api.update(editRow._id, payload, isFormData);
       if (!result.success) throw new Error(result.error.message);
 
       setRows((p) =>
-        p.map((r) => (r._id === editRow._id ? { ...r, ...editRecord } : r))
+         p.map((r) => (r._id === editRow._id ? result.data : r))
       );
       setSnackbar({
         open: true,
@@ -361,6 +464,14 @@ const SchemaDataGrid = () => {
     [getFirstVisibleColumn]
   );
 
+  // Only non-upload fields for DataGrid
+const gridCols = columns.filter(
+  (col) =>
+    !col.field.endsWith("Url") &&
+    !["_id", "__v", "createdAt", "updatedAt"].includes(col.field) &&
+    !col.upload // Hide upload fields in DataGrid
+);
+
   const visibleCols = columns.filter(
     (col) =>
       !col.field.endsWith("Url") &&
@@ -390,7 +501,7 @@ const SchemaDataGrid = () => {
       }}
     >
       <Box display="flex" gap={2}>
-        <Button
+        {(isAdmin || isEditor) && (<Button
           onClick={() => setAddMode(true)}
           variant="contained"
           sx={{
@@ -400,7 +511,7 @@ const SchemaDataGrid = () => {
           }}
         >
           Add New
-        </Button>
+        </Button>)}
         <Button
           onClick={handleDelete}
           disabled={!selectionModel.length}
@@ -533,14 +644,10 @@ const SchemaDataGrid = () => {
               </Button>
             </Box>
           </Box>
-        ) : filteredRows.length === 0 ? (
-          <Typography variant="h6" color="textSecondary" align="center" mt={4}>
-            No data available
-          </Typography>
         ) : (
           <DataGrid
             rows={filteredRows}
-            columns={visibleCols}
+            columns={gridCols}
             getRowId={(row) => row._id || row.id}
             checkboxSelection
             pageSize={pageSize}
@@ -551,7 +658,14 @@ const SchemaDataGrid = () => {
             onPageChange={(n) => setPage(n)}
             disableSelectionOnClick
             onSelectionModelChange={(s) => setSelectionModel(s)}
-            components={{ Toolbar: CustomToolbar }}
+            components={{
+              Toolbar: CustomToolbar,
+              NoRowsOverlay: () => (
+                <Typography variant="h6" color="textSecondary" align="center" mt={4}>
+                  No data available
+                </Typography>
+              ),
+            }}
             onCellClick={handleCellClick}
           />
         )}

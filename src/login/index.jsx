@@ -2,12 +2,12 @@ import { Box, Button, TextField, Typography, Paper } from "@mui/material";
 import { Formik } from "formik";
 import * as yup from "yup";
 import useMediaQuery from "@mui/material/useMediaQuery";
-import Header from "../components/Header";
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTheme } from "@mui/material";
 import { tokens } from "../theme";
 import BaseApiService from "../services/baseApiService";
+import { useAuth } from "../context/AuthContext";
 
 const loginSchema = yup.object().shape({
   username: yup.string().required("Username is required"),
@@ -21,6 +21,7 @@ const initialValues = {
 
 const Login = () => {
   const isNonMobile = useMediaQuery("(min-width:600px)");
+   const { login } = useAuth();
   const navigate = useNavigate();
   const [error, setError] = useState("");
   const theme = useTheme();
@@ -32,7 +33,7 @@ const Login = () => {
     const api = new BaseApiService("/api/login");
     const response = await api.create(values);
     if (response.data && response.data.token) {
-      localStorage.setItem("token", response.data.token);
+      login(response.data.token, response.data.roles);
       navigate("/");
     } else {
       setError("Invalid credentials");
@@ -45,31 +46,35 @@ const Login = () => {
 
   return (
     <Box
-      minHeight="100vh"
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      sx={{
-        background: theme.palette.mode === "dark"
-          ? colors.primary[400]
-          : "#f0f2f5",
-      }}
-    >
+        sx={{
+    minHeight: "100dvh",
+    width: "100vw",       // Important to lock width
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+    background: theme.palette.mode === "dark"
+      ? colors.primary[400]
+      : "#f0f2f5",
+  }}
+  >
+
       <Paper
         elevation={6}
         sx={{
-          padding: isNonMobile ? "48px 40px 36px 40px" : "32px 16px",
-          borderRadius: 3,
-          minWidth: isNonMobile ? 400 : "90vw",
-          maxWidth: 400,
-          background: theme.palette.mode === "dark"
-            ? colors.primary[400]
-            : "#fff",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
-          display: "flex",
-          flexDirection: "column",
-          alignItems: "center",
-        }}
+    width: "100%", // fill parent container
+    maxWidth: 400, // constrain it on large screens
+    padding: isNonMobile ? "48px 40px 36px 40px" : "32px 16px",
+    borderRadius: 3,
+    background: theme.palette.mode === "dark"
+      ? colors.primary[400]
+      : "#fff",
+    boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    boxSizing: "border-box", // make sure padding is included in width
+  }}
       >
         <Typography
           variant="h3"

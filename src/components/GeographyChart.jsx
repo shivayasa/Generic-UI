@@ -11,6 +11,7 @@ const GeographyChart = ({ isDashboard = false }) => {
   return (
     <ResponsiveChoropleth
       data={data}
+      projectionType="mercator" 
       theme={{
         axis: {
           domain: {
